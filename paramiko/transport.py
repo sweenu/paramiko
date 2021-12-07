@@ -168,11 +168,13 @@ class Transport(threading.Thread, ClosingContextManager):
         "hmac-sha1-96",
         "hmac-md5-96",
     )
+    # ~= HostKeyAlgorithms in OpenSSH land
     _preferred_keys = (
         "ssh-ed25519",
         "ecdsa-sha2-nistp256",
         "ecdsa-sha2-nistp384",
         "ecdsa-sha2-nistp521",
+        # TODO: add rsa2, probably here above is fine
         "ssh-rsa",
         "ssh-dss",
     )
@@ -259,7 +261,15 @@ class Transport(threading.Thread, ClosingContextManager):
     }
 
     _key_info = {
+        # TODO: at some point we will want to drop this as it's no longer
+        # considered secure due to using SHA-1 for signatures. OpenSSH 8.8 no
+        # longer supports it. Question becomes at what point do we want to
+        # prevent users with older setups from using this?
         "ssh-rsa": RSAKey,
+        # TODO: needs ssh-rsa2-sha256/512 added here,
+        # mapping to RSAKey again
+        # TODO: but in some way that parameterizes it unless we get the algo
+        # info another method
         "ssh-rsa-cert-v01@openssh.com": RSAKey,
         "ssh-dss": DSSKey,
         "ssh-dss-cert-v01@openssh.com": DSSKey,
@@ -742,6 +752,8 @@ class Transport(threading.Thread, ClosingContextManager):
         :param .PKey key:
             the host key to add, usually an `.RSAKey` or `.DSSKey`.
         """
+        # TODO: this step cannot know about algorithms, unless it wants to go
+        # the "rsa keys get added 3 times" route? (once per algo)
         self.server_key_dict[key.get_name()] = key
 
     def get_server_key(self):
@@ -760,6 +772,8 @@ class Transport(threading.Thread, ClosingContextManager):
             ``None``.
         """
         try:
+            # TODO: this must account for rsa2, unless we store that separately
+            # now or add it to all 3 algos in add_server_key() above?
             return self.server_key_dict[self.host_key_type]
         except KeyError:
             pass
@@ -1280,6 +1294,13 @@ class Transport(threading.Thread, ClosingContextManager):
             Added the ``gss_trust_dns`` argument.
         """
         if hostkey is not None:
+            # TODO: this needs to also default to rsa2 if an RSA key!!
+            # TODO: needs to honor self.disabled_algorithms tho
+            # TODO: maybe we just need a general "algorithm(s) for key obj"
+            # helper or PKey property? iterate that, only pick out ones seen in
+            # self.preferred_keys (which filters out disabled algos).
+            # TODO: make sure it doesn't make more sense to do this later,
+            # updating _preferred_keys seems a little sus
             self._preferred_keys = [hostkey.get_name()]
 
         self.set_gss_host(
@@ -1296,6 +1317,7 @@ class Transport(threading.Thread, ClosingContextManager):
         if (hostkey is not None) and not gss_kex:
             key = self.get_remote_server_key()
             if (
+                # TODO: does this ever need the algo???
                 key.get_name() != hostkey.get_name()
                 or key.asbytes() != hostkey.asbytes()
             ):
@@ -1880,6 +1902,8 @@ class Transport(threading.Thread, ClosingContextManager):
         self._expected_packet = tuple(ptypes)
 
     def _verify_key(self, host_key, sig):
+        # TODO: refer to agreed-upon hostkey "type" from kex, which may be an
+        # rsa2 algo in addition to a 'regular' key type
         key = self._key_info[self.host_key_type](Message(host_key))
         if key is None:
             raise SSHException("Unknown host key type")
@@ -2271,6 +2295,8 @@ class Transport(threading.Thread, ClosingContextManager):
                 self.get_security_options().kex = pkex
             available_server_keys = list(
                 filter(
+                    # TODO: this needs to include rsa2 algos, which it will if
+                    # we expand server_key_dict to have all 3 map to RSAKey obj
                     list(self.server_key_dict.keys()).__contains__,
                     # TODO: ensure tests will catch if somebody streamlines
                     # this by mistake - case is the admittedly silly one where
@@ -2284,6 +2310,10 @@ class Transport(threading.Thread, ClosingContextManager):
                 )
             )
         else:
+            # TODO: this will include all 3 rsa algos once we are updated;
+            # there should be no penalty at this stage since this is about
+            # hostkeys, and a legacy server will just end up selecting
+            # 'ssh-rsa'
             available_server_keys = self.preferred_keys
 
         m = Message()
@@ -2368,6 +2398,8 @@ class Transport(threading.Thread, ClosingContextManager):
         self._log(DEBUG, "Kex: {}".format(agreed_kex[0]))
 
         if self.server_mode:
+            # TODO: this should also benefit from an expanded server_key_dict
+            # w/ all 3 rsa algos in it
             available_server_keys = list(
                 filter(
                     list(self.server_key_dict.keys()).__contains__,
@@ -2380,6 +2412,8 @@ class Transport(threading.Thread, ClosingContextManager):
                 )
             )
         else:
+            # TODO; this should 'just work' once self.preferred_keys has new
+            # algos in it
             agreed_keys = list(
                 filter(server_key_algo_list.__contains__, self.preferred_keys)
             )

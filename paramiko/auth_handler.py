@@ -215,6 +215,8 @@ class AuthHandler(object):
         m.add_string("publickey")
         m.add_boolean(True)
         # Use certificate contents, if available, plain pubkey otherwise
+        # TODO: this prob wants refactoring with the pubkey part of the caller;
+        # why does this even recreate the message?!
         if key.public_blob:
             m.add_string(key.public_blob.key_type)
             m.add_string(key.public_blob.key_blob)
@@ -286,15 +288,30 @@ class AuthHandler(object):
                 m.add_boolean(True)
                 # Use certificate contents, if available, plain pubkey
                 # otherwise
+                # TODO: EXT_INFO ssh-sig-algs
+                # TODO: RFC8832 notes that in absence of EXT_INFO, you
+                # should initially start offering ssh-rsa first, then rsa2;
+                # but eventually, this logic wants to reverse, and start
+                # assuming the other end speaks rsa2 even if it doesn't
+                # say.
+                # TODO: however OpenSSH client iterates
+                # PubkeyAcceptedAlgorithms, which defaults to the SHA-2
+                # algos first, as with hostkeys.
+                # TODO: in our case we probably want this easily
+                # controllable by client code, eg `offer_rsa_first` or
+                # something
                 if self.private_key.public_blob:
+                    # TODO: this needs to be algo, not key type
                     m.add_string(self.private_key.public_blob.key_type)
                     m.add_string(self.private_key.public_blob.key_blob)
                 else:
+                    # TODO: ditto; this is algo, not key type
                     m.add_string(self.private_key.get_name())
                     m.add_string(self.private_key)
                 blob = self._get_session_blob(
                     self.private_key, "ssh-connection", self.username
                 )
+                # TODO: this may need to grow a hash argument
                 sig = self.private_key.sign_ssh_data(blob)
                 m.add_string(sig)
             elif self.auth_method == "keyboard-interactive":
@@ -508,6 +525,8 @@ Error Message: {}
             keytype = m.get_text()
             keyblob = m.get_binary()
             try:
+                # TODO: this should 'just work' if _key_info has all 3 algos
+                # mapped to RSAKey?
                 key = self.transport._key_info[keytype](Message(keyblob))
             except SSHException as e:
                 self._log(INFO, "Auth rejected: public key: {}".format(str(e)))
@@ -532,11 +551,13 @@ Error Message: {}
                     # signs anything...  send special "ok" message
                     m = Message()
                     m.add_byte(cMSG_USERAUTH_PK_OK)
+                    # TODO: does this require algo or real key type?
                     m.add_string(keytype)
                     m.add_string(keyblob)
                     self.transport._send_message(m)
                     return
                 sig = Message(m.get_binary())
+                # TODO: this and/or the verify call below, needs to honor algo
                 blob = self._get_session_blob(key, service, username)
                 if not key.verify_ssh_sig(blob, sig):
                     self._log(INFO, "Auth rejected: invalid signature")

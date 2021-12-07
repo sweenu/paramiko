@@ -61,6 +61,8 @@ class RSAKey(PKey):
         else:
             self._check_type_and_load_cert(
                 msg=msg,
+                # NOTE: this does NOT change when using rsa2 signatures; it's
+                # purely about key loading, not exchange or verification
                 key_type="ssh-rsa",
                 cert_type="ssh-rsa-cert-v01@openssh.com",
             )
@@ -112,16 +114,21 @@ class RSAKey(PKey):
         return isinstance(self.key, rsa.RSAPrivateKey)
 
     def sign_ssh_data(self, data):
+        # TODO: we need an extra arg for hash or algo
         sig = self.key.sign(
             data, padding=padding.PKCS1v15(), algorithm=hashes.SHA1()
         )
 
         m = Message()
+        # TODO: this likely must change to be correct algo
         m.add_string("ssh-rsa")
         m.add_string(sig)
         return m
 
     def verify_ssh_sig(self, data, msg):
+        # TODO: will this be the full algo-bearing version?
+        # TODO: if yes, honor it re: hash below
+        # TODO: if no, then we need an extra arg for hash or algo
         if msg.get_text() != "ssh-rsa":
             return False
         key = self.key
@@ -130,7 +137,12 @@ class RSAKey(PKey):
 
         try:
             key.verify(
-                msg.get_binary(), data, padding.PKCS1v15(), hashes.SHA1()
+                msg.get_binary(),
+                data,
+                padding.PKCS1v15(),
+                # TODO: hash argument needs to change depending on above
+                # get_text()
+                hashes.SHA1(),
             )
         except InvalidSignature:
             return False
