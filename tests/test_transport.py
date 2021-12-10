@@ -23,6 +23,7 @@ Some unit tests for the ssh2 protocol in Transport.
 from __future__ import with_statement
 
 from binascii import hexlify
+from contextlib import contextmanager
 import select
 import socket
 import time
@@ -30,6 +31,8 @@ import threading
 import random
 import unittest
 from mock import Mock
+
+from cryptography.hazmat.primitives import hashes
 
 from paramiko import (
     AuthHandler,
@@ -154,6 +157,7 @@ class TransportTest(unittest.TestCase):
         self.socks.close()
         self.sockc.close()
 
+    # TODO: unify with newer contextmanager
     def setup_test_server(
         self, client_options=None, server_options=None, connect_kwargs=None
     ):
@@ -1169,3 +1173,151 @@ class AlgorithmDisablingTests(unittest.TestCase):
         assert "ssh-dss" not in server_keys
         assert "diffie-hellman-group14-sha256" not in kexen
         assert "zlib" not in compressions
+
+
+@contextmanager
+def server(
+    host_key=None, init=None, server_init=None, client_init=None, connect=None
+):
+    """
+    SSH server contextmanager for testing.
+
+    :param host_key:
+        Host key to use for the server; if None, loads
+        ``test_rsa.key``.
+    :param init:
+        Default `Transport` constructor kwargs to use for both sides.
+    :param server_init:
+        Extends and/or overrides ``init`` for server transport only.
+    :param client_init:
+        Extends and/or overrides ``init`` for client transport only.
+    :param connect:
+        Kwargs to use for ``connect()`` on the client.
+    """
+    if init is None:
+        init = {}
+    if server_init is None:
+        server_init = {}
+    if client_init is None:
+        client_init = {}
+    if connect is None:
+        connect = dict(username="slowdive", password="pygmalion")
+    socks = LoopSocket()
+    sockc = LoopSocket()
+    sockc.link(socks)
+    tc = Transport(sockc, dict(init, **client_init))
+    ts = Transport(socks, dict(init, **server_init))
+
+    if host_key is None:
+        host_key = RSAKey.from_private_key_file(_support("test_rsa.key"))
+    ts.add_server_key(host_key)
+    event = threading.Event()
+    server = NullServer()
+    assert not event.is_set()
+    assert not ts.is_active()
+    assert tc.get_username() is None
+    assert ts.get_username() is None
+    assert not tc.is_authenticated()
+    assert not ts.is_authenticated()
+
+    ts.start_server(event, server)
+    tc.connect(**connect)
+    event.wait(1.0)
+    assert event.is_set()
+    assert ts.is_active()
+    assert tc.is_active()
+
+    yield tc
+
+    tc.close()
+    ts.close()
+    socks.close()
+    sockc.close()
+
+
+_disable_sha2 = dict(
+    disabled_algorithms=dict(keys=["rsa-sha2-256", "rsa-sha2-512"])
+)
+_disable_sha1 = dict(disabled_algorithms=dict(keys=["ssh-rsa"]))
+
+
+class TestRSA2SignatureKeyExchange(unittest.TestCase):
+    # NOTE: these all rely on the default server() hostkey being RSA
+
+    def test_base_case_ssh_rsa_still_used_as_fallback(self):
+        # Prove that ssh-rsa is used if either, or both, participants have RSA2
+        # algorithms disabled
+        for which in ("init", "client_init", "server_init"):
+            with server(**{which: _disable_sha2}) as tc:
+                assert tc.host_key_type == "ssh-rsa"
+
+    def test_kex_with_sha2_256(self):
+        # If 512-bit is disabled, 256-bit is chosen over eg ssh-rsa
+        with server(
+            init=dict(disabled_algorithms=dict(keys=["rsa-sha2-512"]))
+        ) as tc:
+            assert tc.host_key_type == "rsa-sha2-256"
+
+    def test_kex_with_sha2_512(self):
+        key = RSAKey.from_private_key_file(_support("test_rsa.key"))
+        key.verify = Mock()  # Returns nothing, only explodes if invalid
+        # When nothing is disabled, 512-bit RSA2 is selected
+        with server(host_key=key) as tc:
+            # Ensure we recorded expected algorithm
+            assert tc.host_key_type == "rsa-sha2-512"
+            # Ensure the expected hash was actually used to verify!
+            # HashAlgorithm objects do not implement equality/identity :(
+            # Hardcoding the expected .name attr as a hedge against weirdness
+            assert key.verify.call_args[0][-1].name == "sha512"
+
+    def test_client_sha2_disabled_server_sha1_disabled_no_match(self):
+        with server(
+            client_init=_disable_sha2, server_init=_disable_sha1
+        ):
+            # TODO: needs an assertRaises around the 'with server'
+            assert False
+
+    def test_client_sha1_disabled_server_sha2_disabled_no_match(self):
+        with server(
+            client_init=_disable_sha1, server_init=_disable_sha2
+        ):
+            # TODO: needs an assertRaises around the 'with server'
+            assert False
+
+    def test_explicit_client_hostkey_not_limited(self):
+        # TODO: i.e. a RSA hostkey doesn't override _preferred_keys to just
+        # ssh-rsa, but uses all 3
+        pass
+
+
+class TestRSA2SignaturePubkeys(unittest.TestCase):
+    def test_ssh_rsa_base_case(self):
+        # TODO: or is this actually covered elsewhere?
+        pass
+
+    def test_client_offers_sha2_for_rsa_keys(self):
+        # TODO: this
+        pass
+
+    def test_pubkey_auth_with_sha2_256(self):
+        # TODO: this
+        pass
+
+    def test_pubkey_auth_with_sha2_512(self):
+        # TODO: this
+        pass
+
+    def test_client_sha2_disabled_server_sha1_disabled_no_match(self):
+        # TODO: use disabled_algorithms on both ends for this to mimic use of
+        # PubkeyAcceptedAlgorithms
+        pass
+
+    def test_client_sha1_disabled_server_sha2_disabled_no_match(self):
+        # TODO: use disabled_algorithms on both ends for this to mimic use of
+        # PubkeyAcceptedAlgorithms
+        pass
+
+
+class TestRSA2SignatureAgentSupport(unittest.TestCase):
+    # TODO: that other PR about this might work
+    pass
