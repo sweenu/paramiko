@@ -2,6 +2,44 @@
 Changelog
 =========
 
+- :feature:`1643` Add support for SHA-2 variants of RSA key verification
+  algorithms (as described in :rfc:`8332`). How SSH servers/clients decide when
+  and how to use this functionality can be complicated; Paramiko's support is
+  as follows:
+
+  - Client verification of server host key during key exchange will now prefer
+    ``rsa-sha2-512``, ``rsa-sha2-256``, and legacy ``ssh-rsa`` algorithms, in
+    that order, instead of just ``ssh-rsa``.
+
+      - Note that the preference order of other algorithm families such as
+        ``ed25519`` and ``ecdsa`` has not changed; for example, those two
+        groups are still preferred over RSA.
+
+  - Server mode will now offer all 3 RSA algorithms for host key verification
+    during key exchange, similar to client mode, if it has been configured with
+    an RSA host key.
+  - Client mode, when performing public key authentication with an RSA key or
+    cert, will now attempt to auth using ``rsa-sha2-512``, ``rsa-sha2-256``,
+    and ``ssh-rsa``, in that order, by default.
+
+      - This mimics the default behavior of the OpenSSH client (as of the 8.x
+        line and late 7.x) re: its ``PubkeyAcceptedAlgorithms`` (fka
+        ``PubkeyAcceptedKeyTypes``) setting.
+      - The existing ``disabled_algorithms`` argument to
+        `~paramiko.transport.Transport` and `~paramiko.ssh_client.SSHClient`
+        may be used to disable the SHA-2 RSA algorithms when connecting to
+        legacy servers.
+      - TODO: if we get server-sig-algs EXT_INFO support working, note it here
+
+  - Server mode is now capable of pubkey auth involving SHA-2 signatures from
+    clients (who are responsible for indicating the exact algorithm to use, so
+    there is no guessing required on the server end).
+  - TODO: note server-side support for server-sig-algs EXT_INFO
+
+  Thanks to Krisztián Kovács for the report and an early stab at a patch, as
+  well as the numerous users who submitted feedback on the issue, including but
+  not limited to: Christopher Rabotin, Sam Bull, and Manfred Kaiser.
+
 - :release:`2.8.1 <2021-11-28>`
 - :bug:`985` (via :issue:`992`) Fix listdir failure when server uses a locale.
   Now on Python 2.7 `SFTPAttributes <paramiko.sftp_attr.SFTPAttributes>` will
