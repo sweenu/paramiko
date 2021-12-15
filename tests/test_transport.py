@@ -1239,7 +1239,7 @@ _disable_sha2 = dict(
 _disable_sha1 = dict(disabled_algorithms=dict(keys=["ssh-rsa"]))
 
 
-class TestRSA2SignatureKeyExchange(unittest.TestCase):
+class TestSHA2SignatureKeyExchange(unittest.TestCase):
     # NOTE: these all rely on the default server() hostkey being RSA
 
     def test_base_case_ssh_rsa_still_used_as_fallback(self):
@@ -1288,7 +1288,7 @@ class TestRSA2SignatureKeyExchange(unittest.TestCase):
         pass
 
 
-class TestRSA2SignaturePubkeys(unittest.TestCase):
+class TestSHA2SignaturePubkeys(unittest.TestCase):
     def test_ssh_rsa_base_case(self):
         # TODO: or is this actually covered elsewhere?
         pass
@@ -1316,6 +1316,6 @@ class TestRSA2SignaturePubkeys(unittest.TestCase):
         pass
 
 
-class TestRSA2SignatureAgentSupport(unittest.TestCase):
+class TestSHA2SignatureAgentSupport(unittest.TestCase):
     # TODO: that other PR about this might work
     pass
