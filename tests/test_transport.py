@@ -1203,8 +1203,8 @@ def server(
     socks = LoopSocket()
     sockc = LoopSocket()
     sockc.link(socks)
-    tc = Transport(sockc, dict(init, **client_init))
-    ts = Transport(socks, dict(init, **server_init))
+    tc = Transport(sockc, **dict(init, **client_init))
+    ts = Transport(socks, **dict(init, **server_init))
 
     if host_key is None:
         host_key = RSAKey.from_private_key_file(_support("test_rsa.key"))
