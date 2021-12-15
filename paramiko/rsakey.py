@@ -37,6 +37,12 @@ class RSAKey(PKey):
     data.
     """
 
+    HASHES = {
+        "ssh-rsa": hashes.SHA1,
+        "rsa-sha2-256": hashes.SHA256,
+        "rsa-sha2-512": hashes.SHA512,
+    }
+
     def __init__(
         self,
         msg=None,
@@ -113,23 +119,21 @@ class RSAKey(PKey):
     def can_sign(self):
         return isinstance(self.key, rsa.RSAPrivateKey)
 
-    def sign_ssh_data(self, data):
-        # TODO: we need an extra arg for hash or algo
+    def sign_ssh_data(self, data, algorithm):
         sig = self.key.sign(
-            data, padding=padding.PKCS1v15(), algorithm=hashes.SHA1()
+            data,
+            padding=padding.PKCS1v15(),
+            algorithm=self.HASHES[algorithm](),
         )
 
         m = Message()
-        # TODO: this likely must change to be correct algo
-        m.add_string("ssh-rsa")
+        m.add_string(algorithm)
         m.add_string(sig)
         return m
 
     def verify_ssh_sig(self, data, msg):
-        # TODO: will this be the full algo-bearing version?
-        # TODO: if yes, honor it re: hash below
-        # TODO: if no, then we need an extra arg for hash or algo
-        if msg.get_text() != "ssh-rsa":
+        sig_algorithm = msg.get_text()
+        if sig_algorithm not in self.HASHES:
             return False
         key = self.key
         if isinstance(key, rsa.RSAPrivateKey):
@@ -140,9 +144,7 @@ class RSAKey(PKey):
                 msg.get_binary(),
                 data,
                 padding.PKCS1v15(),
-                # TODO: hash argument needs to change depending on above
-                # get_text()
-                hashes.SHA1(),
+                self.HASHES[sig_algorithm](),
             )
         except InvalidSignature:
             return False

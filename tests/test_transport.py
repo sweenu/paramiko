@@ -32,8 +32,6 @@ import random
 import unittest
 from mock import Mock
 
-from cryptography.hazmat.primitives import hashes
-
 from paramiko import (
     AuthHandler,
     ChannelException,
