@@ -36,6 +36,12 @@ Changelog
     there is no guessing required on the server end).
   - TODO: note server-side support for server-sig-algs EXT_INFO
 
+  In order to implement the above, the following API additions were made:
+
+  - `PKey.sign_ssh_data <paramiko.pkey.PKey>`: Grew an extra, optional
+    ``algorithm`` keyword argument (defaulting to ``None`` for most subclasses,
+    and to ``"ssh-rsa"`` for `~paramik.rsakey.RSAKey`).
+
   Thanks to Krisztián Kovács for the report and an early stab at a patch, as
   well as the numerous users who submitted feedback on the issue, including but
   not limited to: Christopher Rabotin, Sam Bull, and Manfred Kaiser.

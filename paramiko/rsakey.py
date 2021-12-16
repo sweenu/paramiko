@@ -119,7 +119,7 @@ class RSAKey(PKey):
     def can_sign(self):
         return isinstance(self.key, rsa.RSAPrivateKey)
 
-    def sign_ssh_data(self, data, algorithm):
+    def sign_ssh_data(self, data, algorithm="ssh-rsa"):
         sig = self.key.sign(
             data,
             padding=padding.PKCS1v15(),

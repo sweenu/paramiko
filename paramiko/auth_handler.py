@@ -288,31 +288,26 @@ class AuthHandler(object):
                 m.add_boolean(True)
                 # Use certificate contents, if available, plain pubkey
                 # otherwise
-                # TODO: EXT_INFO ssh-sig-algs
-                # TODO: RFC8832 notes that in absence of EXT_INFO, you
-                # should initially start offering ssh-rsa first, then rsa2;
-                # but eventually, this logic wants to reverse, and start
-                # assuming the other end speaks rsa2 even if it doesn't
-                # say.
-                # TODO: however OpenSSH client iterates
-                # PubkeyAcceptedAlgorithms, which defaults to the SHA-2
-                # algos first, as with hostkeys.
-                # TODO: in our case we probably want this easily
-                # controllable by client code, eg `offer_rsa_first` or
-                # something
+                # TODO: derive algorithm, defaulting to sha2 for RSA, then sha1
+                # TODO: may want to add a new attr to Transport for this? or
+                # just reuse host key algorithms? are those identical for OSSH?
+                # TODO: for now just defaulting to key type lmao
+                algorithm = None
                 if self.private_key.public_blob:
                     # TODO: this needs to be algo, not key type
-                    m.add_string(self.private_key.public_blob.key_type)
+                    algorithm = self.private_key.public_blob.key_type
+                    m.add_string(algorithm)
                     m.add_string(self.private_key.public_blob.key_blob)
                 else:
                     # TODO: ditto; this is algo, not key type
-                    m.add_string(self.private_key.get_name())
+                    algorithm = self.private_key.get_name()
+                    m.add_string(algorithm)
                     m.add_string(self.private_key)
                 blob = self._get_session_blob(
                     self.private_key, "ssh-connection", self.username
                 )
-                # TODO: this may need to grow a hash argument
-                sig = self.private_key.sign_ssh_data(blob)
+                # TODO: pass in algorithm name
+                sig = self.private_key.sign_ssh_data(blob)  # , algorithm)
                 m.add_string(sig)
             elif self.auth_method == "keyboard-interactive":
                 m.add_string("")
